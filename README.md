@@ -11,6 +11,8 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 ## 一键安装（给别人用）
 
+> 📥 下载最新安装包：[GitHub Releases](https://github.com/712sir/DeepSeek-Balance-Whale-Desktop/releases/latest)
+
 把 `dist\DeepSeekWhale Setup 1.1.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
 
 1. **双击安装包**：标准安装向导——可选安装路径（默认 `%LOCALAPPDATA%\Programs\DeepSeekWhale\`）、

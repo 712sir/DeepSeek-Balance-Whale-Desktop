@@ -1,0 +1,45 @@
+{
+  "name": "whale-desktop",
+  "version": "1.1.0",
+  "description": "DeepSeek 余额小鲸鱼桌面挂件（Electron 透明壳 + 点击穿透，前端原样复用）",
+  "author": "712sir",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "build": "electron-builder --win"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.whale.desktop",
+    "productName": "DeepSeekWhale",
+    "asar": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "vendor/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "小鲸鱼挂件",
+      "installerIcon": "build/icon.ico"
+    }
+  }
+}

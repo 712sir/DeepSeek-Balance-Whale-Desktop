@@ -1,0 +1,10 @@
+# 依赖与构建产物
+node_modules/
+dist/
+data/
+userdata/
+
+# 密钥与本地配置（铁律：密钥不进 Git）
+config.json
+config.bak.json
+.env*

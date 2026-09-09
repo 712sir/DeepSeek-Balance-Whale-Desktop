@@ -5,6 +5,10 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 > 📖 完整移植过程、方案选型与踩坑记录见 [移植教程.md](移植教程.md)（面向「教别人做同类移植」的教学文档）
 透明置顶悬浮在屏幕右下角，**只有鲸鱼本体和它弹出的菜单/气泡能收到鼠标，其余全部穿透直达桌面**。
 
+## 效果预览
+
+![小鲸鱼效果图](screenshots/效果图.png)
+
 ## 一键安装（给别人用）
 
 把 `dist\DeepSeekWhale Setup 1.1.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。

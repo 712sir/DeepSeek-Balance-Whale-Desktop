@@ -129,11 +129,15 @@ var FETCH_TIMEOUT_MS = 25000
 var BALANCE_URL = '/dsh-whale/balance.json'
 var SIZE_URL = '/dsh-whale/size.json'
 var IMG_URL = '/dsh-whale/image.png?v=2'
+var HEADPHONES_IMG_URL = '/dsh-whale/image-headphones.png?v=1'
 var GIF_URL = '/dsh-whale/rua.gif'
+var audioPlaying = false
 
 var css = [
   '.dshwv-root{position:fixed;right:0;bottom:0;--dshw-scale:1;--dshw-base:clamp(122px,calc(min(250px,min(100vw,100vh) * 0.28) * var(--dshw-scale)),625px);width:var(--dshw-base);height:var(--dshw-base);pointer-events:none;user-select:none;-webkit-user-select:none;z-index:9999;font-family:inherit;transition:left .16s ease,top .16s ease,transform .3s ease}',
   '.dshwv-root.dshwv-left{transform:scaleX(-1)}',
+  '@keyframes dshwv-hum{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-3px) rotate(-1deg)}}',
+  '.dshwv-root.dshwv-music .dshwv-body{animation:dshwv-hum .78s ease-in-out infinite}',
   '.dshwv-root.dshwv-dragging{cursor:grabbing;transition:none}',
   '.dshwv-body{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:50% 100%;transition:transform .22s cubic-bezier(.34,1.56,.64,1)}',
   '.dshwv-img{position:absolute;right:0;bottom:0;width:59.45%;height:59.45%;display:block;pointer-events:none;-webkit-user-drag:none;user-select:none}',
@@ -391,6 +395,11 @@ bubbleBox.addEventListener('click', function (e) {
     hideCostBubble()
     return
   }
+  if (musicBubbleActive) {
+    // 音乐哼唱泡泡：点击→显示余额（普通 5 秒行为，关闭后哼唱恢复）
+    showBubble()
+    return
+  }
   if (bubbleRandomActive) {
     // 再次点击：关闭
     hideBubble()
@@ -413,6 +422,62 @@ root.appendChild(body)
 root.appendChild(menuBtn)
 document.body.appendChild(root)
 document.body.appendChild(menuBox)
+
+function showMusicBubble() {
+  // 音乐哼唱泡泡：复用余额泡泡，播放期间一直显示（不设自动关闭计时器）
+  if (!bubbleOn || !audioPlaying) return
+  // 消耗金额泡泡优先：成本泡泡关闭后由 hideBubble 的恢复逻辑再显示哼唱
+  if (costBubbleActive) return
+  if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
+  if (bubbleSwapTimer) { clearTimeout(bubbleSwapTimer); bubbleSwapTimer = null }
+  if (hintFadeTimer) { clearTimeout(hintFadeTimer); hintFadeTimer = null }
+  if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
+  if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
+  musicBubbleActive = true
+  bubbleRandomActive = false
+  bubbleRandomLines = null
+  bubbleShown = true
+  lastHintText = null
+  gifEl.style.display = 'none'
+  gifEl.style.opacity = ''
+  labelEl.style.display = ''
+  labelEl.className = 'dshwv-label'
+  labelEl.textContent = '♪ 哼哼~'
+  labelEl.style.color = ''
+  amountEl.style.display = 'none'
+  amountEl.textContent = ''
+  amountEl.style.color = ''
+  hintEl.style.display = 'none'
+  hintEl.textContent = ''
+  hintEl.style.color = ''
+  textBox.style.transition = ''
+  textBox.style.opacity = ''
+  bubbleBox.classList.add('dshwv-bubble-open')
+}
+
+function setAudioPlaying(playing) {
+  playing = !!playing
+  if (playing === audioPlaying) return
+  audioPlaying = playing
+  if (playing) {
+    root.classList.add('dshwv-music')
+    img.src = HEADPHONES_IMG_URL
+    showMusicBubble()
+  } else {
+    root.classList.remove('dshwv-music')
+    img.src = IMG_URL
+    if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
+    if (musicBubbleActive) {
+      // 停止播放：哼唱泡泡关闭，恢复「点击/余额变动才弹」的普通行为
+      musicBubbleActive = false
+      hideBubble()
+    }
+  }
+}
+
+window.addEventListener('whale-audio-state', function (event) {
+  setAudioPlaying(event && event.detail && event.detail.playing)
+})
 
 // Position model: the widget is ALWAYS expressed in left/top px (so edge snaps
 // animate smoothly via the CSS transition on both sides — switching to
@@ -444,6 +509,8 @@ var bubbleShown = false
 var bubbleTimer = null
 var bubbleRandomActive = false
 var bubbleRandomLines = null
+var musicBubbleActive = false
+var musicBubbleTimer = null
 var BUBBLE_STYLE_CLASS = { A: 'dshwv-label', B: 'dshwv-amount', P: 'dshwv-period', C: 'dshwv-hint' }
 function pickOne(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function singleCenter(style, text, color, wrap) { return [null, { t: text, s: style, c: color || '', w: !!wrap }, null] }
@@ -585,6 +652,9 @@ function showBubble() {
   if (costBubbleActive) return
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
+  if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
+  // 余额泡泡接管：哼唱泡泡退出（音乐仍在播放时，关闭后由 hideBubble 恢复）
+  musicBubbleActive = false
   bubbleShown = true
   bubbleRandomActive = false
   restoreBubbleLines()
@@ -596,6 +666,7 @@ function hideBubble() {
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (bubbleSwapTimer) { clearTimeout(bubbleSwapTimer); bubbleSwapTimer = null }
   if (hintFadeTimer) { clearTimeout(hintFadeTimer); hintFadeTimer = null }
+  if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
   textBox.style.transition = ''
   textBox.style.opacity = ''
   hintEl.style.transition = ''
@@ -612,6 +683,13 @@ function hideBubble() {
     gifFadeTimer = null
     gifEl.style.display = 'none'
   }, 240)
+  // 音乐播放中：余额/随机台词/成本泡泡关闭后回到哼唱泡泡（一直显示）
+  if (audioPlaying && !musicBubbleActive) {
+    musicBubbleTimer = setTimeout(function () {
+      musicBubbleTimer = null
+      showMusicBubble()
+    }, 260)
+  }
 }
 
 // —— 每轮对话消耗金额泡泡 ——
@@ -621,11 +699,13 @@ function showCostBubble(amount) {
   if (costBubbleTimer) { clearTimeout(costBubbleTimer); costBubbleTimer = null }
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
+  if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
   // 取消进行中的余额数字滚动与延迟计时器，避免竞态覆盖成本金额
   if (animId) { cancelAnimationFrame(animId); animId = null }
   if (animDelayTimer) { clearTimeout(animDelayTimer); animDelayTimer = null }
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
   costBubbleActive = true
+  musicBubbleActive = false
   bubbleRandomActive = false
   bubbleShown = true
   lastHintText = null
@@ -880,6 +960,8 @@ function setBubbleOn(v) {
   saveConfig()
   // 必须走 hideCostBubble：残留的 costBubbleActive 会让 render()/showBubble() 永久早退
   if (!bubbleOn) hideCostBubble()
+  // 播放中重新打开气泡开关：哼唱泡泡立即恢复
+  if (bubbleOn && audioPlaying) showMusicBubble()
 }
 function setTurnCostOn(v) {
   turnCostOn = !!v

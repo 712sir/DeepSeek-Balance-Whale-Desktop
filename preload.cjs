@@ -9,6 +9,10 @@
 // 鲸鱼永远全穿透（点不动/拖不动）。另配合主进程 400ms 光标轮询（cursor-pos）兜底。
 const { ipcRenderer } = require('electron')
 
+ipcRenderer.on('audio-state', (event, state) => {
+  window.dispatchEvent(new CustomEvent('whale-audio-state', { detail: state || {} }))
+})
+
 let ignoring = true
 let hitCanvas = null
 let hitReady = false
@@ -40,7 +44,11 @@ function ensureHitCanvas() {
     } catch (err) {}
   }
   probe.onerror = () => {}
-  probe.src = '/dsh-whale/image.png?v=hit'
+  const root = document.querySelector('.dshwv-root')
+  const imageUrl = root && root.classList.contains('dshwv-music')
+    ? '/dsh-whale/image-headphones.png?v=hit'
+    : '/dsh-whale/image.png?v=hit'
+  probe.src = imageUrl
   hitCanvas = c // 占位防重入，onload 前 hitReady=false 走矩形兜底
 }
 
@@ -119,6 +127,9 @@ ipcRenderer.on('cursor-pos', (e, { x, y }) => {
 // —— DOM 观察器：气泡/菜单开合、镜像切换时，用光标当前位置重新判定 ——
 function armObservers() {
   const mo = new MutationObserver(() => {
+    hitCanvas = null
+    hitReady = false
+    ensureHitCanvas()
     if (lastX >= 0) recheck(lastX, lastY)
   })
   const targets = ['.dshwv-root', '.dshwv-menu', '.dshwv-bubble', '.dshwv-menu-btn']

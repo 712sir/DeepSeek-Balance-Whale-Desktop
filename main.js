@@ -8,6 +8,7 @@ import { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell } f
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -39,6 +40,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function main() {
   app.on('second-instance', () => {})
+  app.on('before-quit', stopAudioMonitor)
   app.setPath('userData', USERDATA_DIR) // 必须在 ready 前设置
 
   app.setAppUserModelId('com.whale.desktop') // setLoginItemSettings 前置要求
@@ -106,6 +108,9 @@ let tray = null
 let server = null
 let setupWin = null
 let serverPort = 0
+let audioMonitor = null
+let audioActive = false
+let lastAudioPeakAt = 0
 
 async function boot() {
   // import 原插件（ESM），跑 apply(ctx) 完成全部路由注册
@@ -169,6 +174,7 @@ async function boot() {
   win.showInactive() // 不抢当前窗口焦点
 
   makeTray()
+  startAudioMonitor()
   // 首启引导：没配 key 时弹配置窗（填完自动刷新余额）
   if (!loadConfig().DEEPSEEK_API_KEY) openSetupWindow()
   console.log(`[whale] running at http://127.0.0.1:${serverPort} (routes: ${routes.length})`)
@@ -179,6 +185,57 @@ async function boot() {
     const p = screen.getCursorScreenPoint()
     win.webContents.send('cursor-pos', { x: p.x, y: p.y })
   }, 400)
+}
+
+function startAudioMonitor() {
+  if (process.platform !== 'win32') return
+  const monitorPath = path.join(APP_DIR, 'audio-monitor.ps1')
+  if (!fs.existsSync(monitorPath)) {
+    console.warn('[whale-audio] monitor script not found:', monitorPath)
+    return
+  }
+  audioMonitor = spawn('powershell.exe', [
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', monitorPath,
+  ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  let pending = ''
+  audioMonitor.stdout.setEncoding('utf8')
+  audioMonitor.stdout.on('data', (chunk) => {
+    pending += chunk
+    const lines = pending.split(/\r?\n/)
+    pending = lines.pop() || ''
+    for (const line of lines) {
+      try {
+        const data = JSON.parse(line)
+        const peak = Number(data.peak) || 0
+        if (peak >= 0.012) lastAudioPeakAt = Date.now()
+        const playing = peak >= 0.012 || (audioActive && Date.now() - lastAudioPeakAt < 900)
+        if (playing !== audioActive) {
+          audioActive = playing
+          if (win && !win.isDestroyed()) win.webContents.send('audio-state', { playing, peak })
+        }
+      } catch (err) {}
+    }
+  })
+  audioMonitor.stderr.on('data', (chunk) => {
+    const message = String(chunk).trim()
+    if (message) console.warn('[whale-audio]', message)
+  })
+  audioMonitor.on('error', (err) => console.warn('[whale-audio] monitor failed:', err.message))
+  audioMonitor.on('exit', (code) => {
+    audioMonitor = null
+    if (audioActive) {
+      audioActive = false
+      if (win && !win.isDestroyed()) win.webContents.send('audio-state', { playing: false, peak: 0 })
+    }
+    if (code !== 0) console.warn('[whale-audio] monitor exited:', code)
+  })
+}
+
+function stopAudioMonitor() {
+  if (audioMonitor && !audioMonitor.killed) audioMonitor.kill()
+  audioMonitor = null
 }
 
 // —— 请求分发：把请求按 pathname 精确匹配给插件注册的路由 ——
@@ -194,6 +251,9 @@ function handleRequest(req, res) {
     res.end(SETUP_HTML)
     return
   }
+  if (pathname === '/dsh-whale/image-headphones.png') {
+    return serveAsset(path.join(PLUGIN_DIR, 'assets', 'DSniang1-headphones.png'), 'image/png', res)
+  }
   const route = routes.find((r) => r.kind === 'exact' && r.path === pathname)
   if (route) {
     try {
@@ -206,6 +266,17 @@ function handleRequest(req, res) {
   }
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
   res.end('not found')
+}
+
+function serveAsset(filePath, contentType, res) {
+  try {
+    const body = fs.readFileSync(filePath)
+    res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' })
+    res.end(body)
+  } catch (err) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('asset unavailable')
+  }
 }
 
 // —— 桌面页面：透明背景，只引插件自己的 widget.js（前端零改写） ——
@@ -354,7 +425,7 @@ function makeTray() {
       { label: '配置 API Key…', click: () => openSetupWindow() },
       { label: '打开配置文件', click: () => shell.openPath(CONFIG_FILE) },
       { type: 'separator' },
-      { label: '退出', click: () => { cleanupFns.forEach((fn) => { try { fn() } catch (err) {} }); app.quit() } },
+      { label: '退出', click: () => { cleanupFns.forEach((fn) => { try { fn() } catch (err) {} }); stopAudioMonitor(); app.quit() } },
     ])
     tray.setContextMenu(menu)
     tray.setToolTip('DeepSeek 小鲸鱼')

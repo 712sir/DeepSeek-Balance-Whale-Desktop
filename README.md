@@ -13,10 +13,10 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > 📥 下载最新安装包：[GitHub Releases](https://github.com/712sir/DeepSeek-Balance-Whale-Desktop/releases/latest)
 
-把 `dist\DeepSeekWhale Setup 1.1.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
+把 `dist\DeepSeekWhale Setup 1.1.2.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
 
 1. **双击安装包**：标准安装向导——可选安装路径（默认 `%LOCALAPPDATA%\Programs\DeepSeekWhale\`）、
-   勾选桌面快捷方式，装完自动启动
+   勾选桌面快捷方式、勾选**开机自启**（默认开，装完可随时在托盘菜单改），装完自动启动
 2. **首次启动弹窗填 Key**：装完第一次运行会自动弹出「首次配置」小窗口，粘贴对方的
    DeepSeek API Key → 「保存并开始使用」，余额立即显示（Key 只写本机，不上传）
    ——以后想换 Key：右键托盘鲸鱼 → 「配置 API Key…」重新弹窗
@@ -24,7 +24,7 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > ⚠️ 安装包未签名（个人项目），首次运行若 Windows SmartScreen 弹「未知发布者」，
 > 点「更多信息 → 仍要运行」即可。正式分发可配代码签名证书消除该提示。
-> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.1.0.exe /S`（自定义目录加 `/D=路径`）
+> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.1.2.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
 
 ## 原理（前端零改写）
 
@@ -85,7 +85,7 @@ npm start
 ## 打包发布（开发者）
 
 ```powershell
-npm run build        # → dist\DeepSeekWhale Setup 1.1.0.exe（NSIS 一键安装包）
+npm run build        # → dist\DeepSeekWhale Setup 1.1.2.exe（NSIS 一键安装包）
 npm run start        # 开发模式运行（不打包）
 ```
 
@@ -103,6 +103,10 @@ npm run start        # 开发模式运行（不打包）
 - **窗口=桌面**：原插件吸附在「浏览器窗口」边缘，这里吸附在「屏幕工作区」边缘
 - **升级**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` git pull 后重启挂件即生效，
   桌面端零改动
+- **点击/移动修复（v1.1.2）**：preload 监听器改为顶层立即挂载，不再依赖 window load；主进程增加光标轮询兜底，修复偶发全穿透导致的点击和拖动失效。
+- **本地补丁（v1.1.2）**：修复上游 issue #55 位置持久化 bug（重启后离边距离丢失、
+  自由位被钉回贴角+镜像）——存储升 v:3 记自由轴、恢复时离边距离带进 hOff/vOff。
+  当前尚未向上游提交 PR，待整理后再提交；合并后 vendor 重新对齐
 
 ## 排障
 

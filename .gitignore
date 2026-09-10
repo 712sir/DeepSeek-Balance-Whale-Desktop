@@ -8,3 +8,22 @@ userdata/
 config.json
 config.bak.json
 .env*
+
+# Electron/Chromium runtime profile
+Cache/
+Code Cache/
+DIPS*
+DawnGraphiteCache/
+DawnWebGPUCache/
+DevToolsActiveCache/
+DawnWebGPUCache/
+DevToolsActivePort
+Dictionaries/
+GPUCache/
+Local State
+Local Storage/
+Network/
+Preferences
+Session Storage/
+Shared Dictionary/
+declarative_performance_observer.db*

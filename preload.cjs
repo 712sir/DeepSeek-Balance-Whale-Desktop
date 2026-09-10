@@ -3,6 +3,10 @@
 // 这里实时判定光标是否落在「应该拦截」的区域（鲸鱼像素/打开的菜单/气泡/菜单按钮），
 // 是 → 关穿透（事件归窗口），否 → 开穿透（点击直达桌面）。
 // 命中检测逻辑与原插件自身的 isWhaleHit 保持同一套 610×610 alpha 映射（含左右镜像）。
+//
+// 健壮性（v1.1.2）：事件监听在脚本顶层立即挂载，不依赖 window load 事件——
+// 个别实例中 load 晚于 preload 执行甚至不触发时，旧实现会导致监听挂不上、
+// 鲸鱼永远全穿透（点不动/拖不动）。另配合主进程 400ms 光标轮询（cursor-pos）兜底。
 const { ipcRenderer } = require('electron')
 
 let ignoring = true
@@ -41,6 +45,8 @@ function ensureHitCanvas() {
 }
 
 function isInteractive(px, py) {
+  if (typeof px !== 'number' || typeof py !== 'number' || !isFinite(px) || !isFinite(py)) return false
+  ensureHitCanvas() // 惰性准备命中图（不依赖 load 事件）
   // 1) 打开的菜单（设置面板）
   const menu = document.querySelector('.dshwv-menu')
   if (menu && menu.classList.contains('dshwv-menu-open')) {
@@ -87,22 +93,31 @@ function recheck(px, py) {
 let lastX = -1
 let lastY = -1
 
-window.addEventListener('load', () => {
-  ensureHitCanvas()
+// —— 事件监听：顶层立即挂载，不依赖 load ——
+window.addEventListener('mousemove', (e) => {
+  lastX = e.clientX
+  lastY = e.clientY
+  recheck(lastX, lastY)
+})
 
-  window.addEventListener('mousemove', (e) => {
-    lastX = e.clientX
-    lastY = e.clientY
-    recheck(lastX, lastY)
-  })
+document.addEventListener('mouseleave', () => {
+  lastX = -1
+  lastY = -1
+  setIgnore(true) // 光标离开窗口 → 恢复穿透
+})
 
-  document.addEventListener('mouseleave', () => {
-    lastX = -1
-    lastY = -1
-    setIgnore(true) // 光标离开窗口 → 恢复穿透
-  })
+// —— 主进程光标轮询兜底（400ms，坐标有变化才判定；forward/事件链失效时仍可点）——
+let lastPollX = -1
+let lastPollY = -1
+ipcRenderer.on('cursor-pos', (e, { x, y }) => {
+  if (x === lastPollX && y === lastPollY) return
+  lastPollX = x
+  lastPollY = y
+  recheck(Math.round(x / window.devicePixelRatio), Math.round(y / window.devicePixelRatio))
+})
 
-  // 气泡/菜单开合、镜像切换时，用光标当前位置重新判定
+// —— DOM 观察器：气泡/菜单开合、镜像切换时，用光标当前位置重新判定 ——
+function armObservers() {
   const mo = new MutationObserver(() => {
     if (lastX >= 0) recheck(lastX, lastY)
   })
@@ -117,7 +132,12 @@ window.addEventListener('load', () => {
   setTimeout(watch, 500)
   new MutationObserver(() => { if (lastX >= 0) recheck(lastX, lastY) })
     .observe(document.body, { childList: true })
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', armObservers)
+} else {
+  armObservers()
+}
 
-  // 初始：默认穿透（等 mousemove 再开）
-  setIgnore(true)
-})
+// 初始：默认穿透（等鼠标事件/轮询再开）
+setIgnore(true)

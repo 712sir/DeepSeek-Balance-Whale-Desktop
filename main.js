@@ -172,6 +172,13 @@ async function boot() {
   // 首启引导：没配 key 时弹配置窗（填完自动刷新余额）
   if (!loadConfig().DEEPSEEK_API_KEY) openSetupWindow()
   console.log(`[whale] running at http://127.0.0.1:${serverPort} (routes: ${routes.length})`)
+
+  // 兜底光标轮询：preload 事件链万一失效（load 竞态等），页面仍能拿到光标位置判定穿透
+  setInterval(() => {
+    if (!win || win.isDestroyed()) return
+    const p = screen.getCursorScreenPoint()
+    win.webContents.send('cursor-pos', { x: p.x, y: p.y })
+  }, 400)
 }
 
 // —— 请求分发：把请求按 pathname 精确匹配给插件注册的路由 ——

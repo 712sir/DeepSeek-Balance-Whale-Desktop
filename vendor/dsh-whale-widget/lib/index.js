@@ -840,7 +840,8 @@ function saveConfig() {
   try {
     fetch(SIZE_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scale: state.scale, sound: soundOn, vol: soundVol, soundSet: soundSet, usageMode: usageMode, peakMode: peakMode, bubbleOn: bubbleOn, turnCostOn: turnCostOn, turnCostCloseMs: turnCostCloseMs, scrollGapOn: scrollGapOn, scrollGapPx: scrollGapPx }) })
     // 锚点位置记忆：记录相对边框的离边距离，窗口 resize 后保持（localStorage）。
-    // v:2 = 净距离格式（剥离避让距离），v:1 旧格式含避让距离，恢复时废弃旧格式。
+    // v:3 = v:2 净距离格式 + freeH/freeV 自由轴标记（拖拽停在屏幕中部时 state.h/v 为 null，
+    // 需记录否则重启后被强制锚定贴边并触发镜像）；v:2 旧数据恢复时视为全锚定（带距离）。
     var vp = viewport()
     var w = root.offsetWidth || root.getBoundingClientRect().width || 0
     var h = root.offsetHeight || root.getBoundingClientRect().height || 0
@@ -852,11 +853,13 @@ function saveConfig() {
     var hDistRaw = Math.round(Math.min(leftDist, rightDist))
     var hDist = hAnchor === 'right' && scrollGapOn ? Math.max(0, hDistRaw - rightGap()) : hDistRaw
     localStorage.setItem('dshw-pos', JSON.stringify({
-      v: 2,
+      v: 3,
       hAnchor: hAnchor,
       hDist: hDist,
       vAnchor: topDist <= bottomDist ? 'top' : 'bottom',
-      vDist: Math.round(Math.min(topDist, bottomDist))
+      vDist: Math.round(Math.min(topDist, bottomDist)),
+      freeH: state.h === null,
+      freeV: state.v === null
     }))
   } catch (err) {}
 }
@@ -1268,7 +1271,7 @@ function endDrag(e, clickAllowed) {
 function applyAnchorPos() {
   try {
     var a = JSON.parse(localStorage.getItem('dshw-pos') || 'null')
-    if (!a || a.v !== 2 || (a.hAnchor !== 'left' && a.hAnchor !== 'right') || typeof a.hDist !== 'number' ||
+    if (!a || (a.v !== 2 && a.v !== 3) || (a.hAnchor !== 'left' && a.hAnchor !== 'right') || typeof a.hDist !== 'number' ||
         (a.vAnchor !== 'top' && a.vAnchor !== 'bottom') || typeof a.vDist !== 'number') return false
     var vp = viewport()
     var w = root.offsetWidth || root.getBoundingClientRect().width || 0
@@ -1280,9 +1283,10 @@ function applyAnchorPos() {
     state.left = clamp(l, 0, Math.max(0, vp.w - w))
     state.top = clamp(t, 0, Math.max(0, vp.h - h))
     state.h = a.hAnchor
-    state.hOff = 0
+    // 离边距离带进 hOff/vOff：后续 resize 走 settle() 时按距离重算，而非贴边归零
+    state.hOff = a.hDist
     state.v = a.vAnchor
-    state.vOff = 0
+    state.vOff = a.vDist
     express()
     return true
   } catch (err) { return false }
@@ -1355,12 +1359,13 @@ fetch(SIZE_URL, { cache: 'no-store' })
       scrollGapInput.value = String(scrollGapPx)
     }
     // 相对边框恢复（localStorage 锚点）：窗口变化后保持离边距离。
-    // 仅认 v:2 净距离格式；旧格式（含避让距离）废弃，挂件保持默认右下角吸附。
-    // 恢复时还原吸附状态（hAnchor/vAnchor → state.h/v），避免挂件变自由位置
-    // 导致避让调节不实时（settle 自由分支只 clamp 不重算位置）。
+    // 仅认 v:2/v:3 净距离格式；旧格式（含避让距离）废弃，挂件保持默认右下角吸附。
+    // 恢复时还原吸附状态（hAnchor/vAnchor → state.h/v）；v:3 的 freeH/freeV 轴保持自由位
+    // （h/v = null），直接用算出的 left/top，避免被 settle() 钉回贴边。
+    // 锚定轴把离边距离带进 hOff/vOff（此前清零 → settle() 覆盖刚算好的 left/top，位置丢失）。
     try {
       var a = JSON.parse(localStorage.getItem('dshw-pos') || 'null')
-      if (a && a.v === 2 && (a.hAnchor === 'left' || a.hAnchor === 'right') && typeof a.hDist === 'number' &&
+      if (a && (a.v === 2 || a.v === 3) && (a.hAnchor === 'left' || a.hAnchor === 'right') && typeof a.hDist === 'number' &&
           (a.vAnchor === 'top' || a.vAnchor === 'bottom') && typeof a.vDist === 'number') {
         var vpA = viewport()
         var wA = root.offsetWidth || root.getBoundingClientRect().width || 0
@@ -1371,11 +1376,14 @@ fetch(SIZE_URL, { cache: 'no-store' })
         var tA = a.vAnchor === 'top' ? a.vDist : vpA.h - a.vDist - hA
         state.left = clamp(lA, 0, Math.max(0, vpA.w - wA))
         state.top = clamp(tA, 0, Math.max(0, vpA.h - hA))
-        // 按锚点还原吸附状态（贴边锚点 → 吸附；自由位锚点 → 自由）
-        state.h = a.hAnchor
-        state.hOff = 0
-        state.v = a.vAnchor
-        state.vOff = 0
+        var freeH = a.v === 3 && a.freeH === true
+        var freeV = a.v === 3 && a.freeV === true
+        // 锚定轴：锚点 + 离边距离（settle 按当前避让开关重算，与保存时一致）；
+        // 自由轴：保持 null + 已算好的 left/top（settle 只 clamp 不重算，位置不丢、不触发镜像）
+        state.h = freeH ? null : a.hAnchor
+        state.hOff = freeH ? state.left : a.hDist
+        state.v = freeV ? null : a.vAnchor
+        state.vOff = freeV ? state.top : a.vDist
         settle()
       }
     } catch (err) {}

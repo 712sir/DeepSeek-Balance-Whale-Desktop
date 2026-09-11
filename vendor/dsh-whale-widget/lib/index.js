@@ -142,6 +142,14 @@ var TSUN_CLICKS = 5
 var TSUN_WINDOW_MS = 2500
 var TSUN_MS = 10000
 var TSUN_LINE = '杂鱼~杂鱼~'
+// 吃 token 彩蛋：余额单次下降 ≥ EAT_THRESHOLD（¥，约一个轮询周期 60s 内）判定「消耗过快」触发，持续 EAT_MS
+var eatActive = false
+var eatRevertTimer = null
+var EAT_THRESHOLD = 0.5
+var EAT_MS = 10000
+var EAT_LINE = '啊呜~狂吃 token 中~'
+var EAT_IMG_URL = '/dsh-whale/image-eat.png?v=1'
+var EAT_AUDIO_URL = '/dsh-whale/eat.mp3'
 
 var css = [
   '.dshwv-root{position:fixed;right:0;bottom:0;--dshw-scale:1;--dshw-base:clamp(122px,calc(min(250px,min(100vw,100vh) * 0.28) * var(--dshw-scale)),625px);width:var(--dshw-base);height:var(--dshw-base);pointer-events:none;user-select:none;-webkit-user-select:none;z-index:9999;font-family:inherit;transition:left .16s ease,top .16s ease,transform .3s ease}',
@@ -475,16 +483,17 @@ function showMusicBubble() {
 }
 
 function updateWhaleImage() {
-  // 形象优先级：傲娇彩蛋 > 耳机（播放中）> 普通
+  // 形象优先级：傲娇彩蛋 > 吃token彩蛋 > 耳机（播放中）> 普通
   if (tsunActive) { img.src = TSUN_IMG_URL; return }
+  if (eatActive) { img.src = EAT_IMG_URL; return }
   img.src = audioPlaying ? HEADPHONES_IMG_URL : IMG_URL
 }
 
 function registerTsunClick() {
   // 返回 true 表示调用方应跳过常规动作：
   // ① 本次点击触发彩蛋（跳过 showBubble，避免余额泡泡盖掉傲娇台词）
-  // ② 彩蛋进行中：点击全部屏蔽（最高优先级——不弹余额、不弹随机台词、不切形象）
-  if (tsunActive) return true
+  // ② 任一彩蛋进行中：点击全部屏蔽（最高优先级——不弹余额、不弹随机台词、不切形象）
+  if (tsunActive || eatActive) return true
   var now = Date.now()
   tsunClicks.push(now)
   while (tsunClicks.length && now - tsunClicks[0] > TSUN_WINDOW_MS) tsunClicks.shift()
@@ -528,6 +537,43 @@ function playTsunAudio() {
   } catch (err) {}
 }
 
+// —— 吃 token 彩蛋：余额快速下降（消耗过快）触发 ——
+function triggerEat() {
+  if (tsunActive || eatActive) return
+  eatActive = true
+  root.classList.add('dshwv-eat')
+  updateWhaleImage()
+  // 彩蛋优先级最高：正在显示的消耗泡泡直接收起让位
+  if (costBubbleActive) hideCostBubble()
+  // 取消进行中的余额数字滚动，避免动画覆盖彩蛋台词
+  if (animId) { cancelAnimationFrame(animId); animId = null }
+  if (animDelayTimer) { clearTimeout(animDelayTimer); animDelayTimer = null }
+  if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
+  showOneLineBubble(EAT_LINE, EAT_MS)
+  playEatAudio()
+  if (eatRevertTimer) { clearTimeout(eatRevertTimer); eatRevertTimer = null }
+  eatRevertTimer = setTimeout(function () {
+    eatRevertTimer = null
+    eatActive = false
+    root.classList.remove('dshwv-eat')
+    updateWhaleImage()
+    // 音乐仍在播放：哼唱泡泡接回（彩蛋期间被吃token台词占据）
+    if (audioPlaying && !musicBubbleActive) showMusicBubble()
+  }, EAT_MS)
+}
+
+var eatAudio = null
+function playEatAudio() {
+  try {
+    // 先通知主进程冻结检测，再出声——防止鲸鱼把投币音效听成音乐
+    if (window.__whaleSelfAudioStarted) window.__whaleSelfAudioStarted(4000)
+    if (!eatAudio) eatAudio = new Audio(EAT_AUDIO_URL)
+    eatAudio.currentTime = 0
+    var p = eatAudio.play()
+    if (p && p.catch) p.catch(function () {})
+  } catch (err) {}
+}
+
 function setAudioPlaying(playing) {
   playing = !!playing
   if (playing === audioPlaying) return
@@ -535,8 +581,8 @@ function setAudioPlaying(playing) {
   if (playing) {
     root.classList.add('dshwv-music')
     updateWhaleImage()
-    // 彩蛋进行中不接哼唱：杂鱼台词优先级最高，恢复时由 triggerTsun 的计时器接回
-    if (!tsunActive) showMusicBubble()
+    // 彩蛋进行中不接哼唱：彩蛋台词优先级最高，恢复时由彩蛋计时器接回
+    if (!tsunActive && !eatActive) showMusicBubble()
   } else {
     root.classList.remove('dshwv-music')
     updateWhaleImage()
@@ -759,7 +805,7 @@ function hideBubble() {
   }, 240)
   // 音乐播放中：余额/随机台词/成本泡泡关闭后回到哼唱泡泡（一直显示）；
   // 彩蛋进行中不接（杂鱼台词优先级最高，恢复时由 triggerTsun 的计时器接回）
-  if (audioPlaying && !musicBubbleActive && !tsunActive) {
+  if (audioPlaying && !musicBubbleActive && !tsunActive && !eatActive) {
     musicBubbleTimer = setTimeout(function () {
       musicBubbleTimer = null
       showMusicBubble()
@@ -770,8 +816,8 @@ function hideBubble() {
 // —— 每轮对话消耗金额泡泡 ——
 var costBubbleTimer = null
 function showCostBubble(amount) {
-  // 彩蛋进行中：消耗泡泡也让位（傲娇彩蛋优先级最高）
-  if (!bubbleOn || !turnCostOn || tsunActive) return
+  // 彩蛋进行中：消耗泡泡也让位（彩蛋优先级最高）
+  if (!bubbleOn || !turnCostOn || tsunActive || eatActive) return
   if (costBubbleTimer) { clearTimeout(costBubbleTimer); costBubbleTimer = null }
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
@@ -935,13 +981,16 @@ function refresh(manual) {
         var nc = String(data.currency || 'CNY')
         var changed = state.balance !== null && (nb !== state.balance || nc !== state.currency)
         var currencyChanged = state.currency !== null && nc !== state.currency
+        // 吃 token 彩蛋：余额下降 ≥ 阈值（约一个轮询周期 60s 内）= 消耗过快
+        var spent = state.balance !== null && nb < state.balance ? state.balance - nb : 0
         state.balance = nb
         state.currency = nc
         state.message = ''
         state.todayUsage = data.todayUsage !== undefined ? data.todayUsage : null
         state.isPeak = !!data.isPeak
+        if (spent >= EAT_THRESHOLD) triggerEat()
         if (changed && !currencyChanged) {
-          if (!manual && !tsunActive) {
+          if (!manual && !tsunActive && !eatActive) {
             showBubble()
             state.status = 'changing'
             // balance-change bubble: wait 0.3s after it floats out, then roll the number

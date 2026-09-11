@@ -49,9 +49,11 @@ function ensureHitCanvas() {
   const root = document.querySelector('.dshwv-root')
   const imageUrl = root && root.classList.contains('dshwv-tsun')
     ? '/dsh-whale/image-tsun.png?v=hit'
-    : root && root.classList.contains('dshwv-music')
-      ? '/dsh-whale/image-headphones.png?v=hit'
-      : '/dsh-whale/image.png?v=hit'
+    : root && root.classList.contains('dshwv-eat')
+      ? '/dsh-whale/image-eat.png?v=hit'
+      : root && root.classList.contains('dshwv-music')
+        ? '/dsh-whale/image-headphones.png?v=hit'
+        : '/dsh-whale/image.png?v=hit'
   probe.src = imageUrl
   hitCanvas = c // 占位防重入，onload 前 hitReady=false 走矩形兜底
 }

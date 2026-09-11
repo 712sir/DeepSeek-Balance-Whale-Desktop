@@ -13,7 +13,7 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > 📥 下载最新安装包：[GitHub Releases](https://github.com/712sir/DeepSeek-Balance-Whale-Desktop/releases/latest)
 
-把 `dist\DeepSeekWhale Setup 1.2.2.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
+把 `dist\DeepSeekWhale Setup 1.3.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
 
 1. **双击安装包**：标准安装向导——可选安装路径（默认 `%LOCALAPPDATA%\Programs\DeepSeekWhale\`）、
    勾选桌面快捷方式、勾选**开机自启**（默认开，装完可随时在托盘菜单改），装完自动启动
@@ -24,7 +24,7 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > ⚠️ 安装包未签名（个人项目），首次运行若 Windows SmartScreen 弹「未知发布者」，
 > 点「更多信息 → 仍要运行」即可。正式分发可配代码签名证书消除该提示。
-> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.2.2.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
+> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.3.0.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
 
 ## 原理（前端零改写）
 
@@ -91,6 +91,21 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 > 傲娇图与语音素材位于 `vendor\dsh-whale-widget\assets\`（`DSniang1-tsun.png` / `tsun.mp3`），
 > 想换素材直接替换同名文件即可。
 
+### 吃 token 彩蛋 🪙
+
+余额**快速下降**时触发：约一个轮询周期（60s）内单次下降 **≥ ¥0.5**（折合消耗速度 ≳ ¥30/小时），
+判定「狂吃 token」：
+
+- 形象切换为「狂吃 token」图，气泡全程显示 `啊呜~狂吃 token 中~`，播放投币音效。
+- 彩蛋期间**优先级最高**：点击鲸鱼/气泡无反应、不弹余额、不弹消耗泡泡；
+  音乐开/停不切换形象；余额变动只后台记账，不打扰演出。
+- 10 秒后自动恢复原型；若音乐还在播放，会接回耳机形象和哼唱气泡。
+- 与傲娇彩蛋互斥：任一彩蛋演出期间，另一个不会触发。
+
+> 触发阈值与时长是 `vendor\dsh-whale-widget\lib\index.js` 顶部的 `EAT_THRESHOLD`（默认 0.5）/ `EAT_MS`（默认 10000），
+> 想更灵敏就调低阈值。素材位于 `vendor\dsh-whale-widget\assets\`（`DSniang1-eat.png` / `eat.mp3`），
+> 换素材直接替换同名文件即可。
+
 ### 数据文件
 
 | 路径 | 内容 |
@@ -105,7 +120,7 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 ## 打包发布（开发者）
 
 ```powershell
-npm run build        # → dist\DeepSeekWhale Setup 1.2.2.exe（NSIS 一键安装包）
+npm run build        # → dist\DeepSeekWhale Setup 1.3.0.exe（NSIS 一键安装包）
 npm run start        # 开发模式运行（不打包）
 ```
 
@@ -125,6 +140,8 @@ npm run start        # 开发模式运行（不打包）
   放歌时换耳机形象 + 哼唱气泡（原插件听不到系统音乐）；自己的点击音效/彩蛋语音会先通知
   主进程冻结检测，不会把自己听成音乐
 - **傲娇彩蛋（v1.2.1）**：桌面版特有——2.5 秒内连点 5 次触发，见「傲娇彩蛋」一节
+- **吃 token 彩蛋（v1.3.0）**：桌面版特有——60s 窗口内余额单次下降 ≥ ¥0.5 触发「狂吃 token」形象 +
+  台词气泡 + 投币音效，10s 后恢复，见「吃 token 彩蛋」一节
 - **升级**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` git pull 后重启挂件即生效，
   桌面端零改动
 - **点击/移动修复（v1.1.2）**：preload 监听器改为顶层立即挂载，不再依赖 window load；主进程增加光标轮询兜底，修复偶发全穿透导致的点击和拖动失效。

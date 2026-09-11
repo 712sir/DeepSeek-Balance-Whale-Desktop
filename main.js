@@ -277,6 +277,12 @@ function handleRequest(req, res) {
   if (pathname === '/dsh-whale/tsun.mp3') {
     return serveAsset(path.join(PLUGIN_DIR, 'assets', 'tsun.mp3'), 'audio/mpeg', res)
   }
+  if (pathname === '/dsh-whale/image-eat.png') {
+    return serveAsset(path.join(PLUGIN_DIR, 'assets', 'DSniang1-eat.png'), 'image/png', res)
+  }
+  if (pathname === '/dsh-whale/eat.mp3') {
+    return serveAsset(path.join(PLUGIN_DIR, 'assets', 'eat.mp3'), 'audio/mpeg', res)
+  }
   const route = routes.find((r) => r.kind === 'exact' && r.path === pathname)
   if (route) {
     try {

@@ -1,6 +1,6 @@
 {
   "name": "whale-desktop",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "DeepSeek 余额小鲸鱼桌面挂件（Electron 透明壳 + 点击穿透，前端原样复用）",
   "author": "712sir",
   "type": "module",

@@ -187,12 +187,20 @@ async function boot() {
   if (!loadConfig().DEEPSEEK_API_KEY) openSetupWindow()
   console.log(`[whale] running at http://127.0.0.1:${serverPort} (routes: ${routes.length})`)
 
-  // 兜底光标轮询：preload 事件链万一失效（load 竞态等），页面仍能拿到光标位置判定穿透
+  // 兜底光标轮询：preload 事件链万一失效（load 竞态、Windows forward 钩子失活等），页面仍能拿到光标位置判定穿透。
+  // 注意：screen.getCursorScreenPoint() 返回 DIP（物理像素 ÷ 缩放），页面 CSS px == DIP ÷ zoomFactor，
+  // 所以这里直接换算成窗口内 CSS 坐标，preload 侧无需再做任何缩放（150% 缩放下旧实现再除 dpr 会算错）。
   setInterval(() => {
     if (!win || win.isDestroyed()) return
     const p = screen.getCursorScreenPoint()
-    win.webContents.send('cursor-pos', { x: p.x, y: p.y })
-  }, 400)
+    const b = win.getBounds()
+    let zf = 1
+    try { zf = win.webContents.getZoomFactor() || 1 } catch (err) {}
+    win.webContents.send('cursor-pos', {
+      x: Math.round((p.x - b.x) / zf),
+      y: Math.round((p.y - b.y) / zf),
+    })
+  }, 200)
 }
 
 function startAudioMonitor() {

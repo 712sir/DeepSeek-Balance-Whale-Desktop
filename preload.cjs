@@ -6,7 +6,7 @@
 //
 // 健壮性（v1.1.2）：事件监听在脚本顶层立即挂载，不依赖 window load 事件——
 // 个别实例中 load 晚于 preload 执行甚至不触发时，旧实现会导致监听挂不上、
-// 鲸鱼永远全穿透（点不动/拖不动）。另配合主进程 400ms 光标轮询（cursor-pos）兜底。
+// 鲸鱼永远全穿透（点不动/拖不动）。另配合主进程 200ms 光标轮询（cursor-pos）兜底。
 const { ipcRenderer } = require('electron')
 
 ipcRenderer.on('audio-state', (event, state) => {
@@ -118,14 +118,15 @@ document.addEventListener('mouseleave', () => {
   setIgnore(true) // 光标离开窗口 → 恢复穿透
 })
 
-// —— 主进程光标轮询兜底（400ms，坐标有变化才判定；forward/事件链失效时仍可点）——
+// —— 主进程光标轮询兜底（200ms，坐标有变化才判定；forward/事件链失效时仍可点）——
+// 主进程已换算成窗口内 CSS 坐标（DIP - 窗口原点，再除 zoomFactor），这里直接使用，不再除以 dpr。
 let lastPollX = -1
 let lastPollY = -1
 ipcRenderer.on('cursor-pos', (e, { x, y }) => {
   if (x === lastPollX && y === lastPollY) return
   lastPollX = x
   lastPollY = y
-  recheck(Math.round(x / window.devicePixelRatio), Math.round(y / window.devicePixelRatio))
+  recheck(x, y)
 })
 
 // —— DOM 观察器：气泡/菜单开合、镜像切换时，用光标当前位置重新判定 ——

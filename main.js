@@ -111,6 +111,7 @@ let serverPort = 0
 let audioMonitor = null
 let audioActive = false
 let lastAudioPeakAt = 0
+let selfAudioUntil = 0 // 鲸鱼自发音效（点击鸭子声/彩蛋语音）期间暂停音乐检测，避免听成音乐
 
 async function boot() {
   // import 原插件（ESM），跑 apply(ctx) 完成全部路由注册
@@ -170,6 +171,13 @@ async function boot() {
     })
   }
 
+  // 页面重载后补发当前音频状态（audioActive 未翻转时不会再有新事件）
+  win.webContents.on('did-finish-load', () => {
+    if (audioActive && win && !win.isDestroyed()) {
+      win.webContents.send('audio-state', { playing: true, peak: 0 })
+    }
+  })
+
   await win.loadURL(`http://127.0.0.1:${serverPort}/`)
   win.showInactive() // 不抢当前窗口焦点
 
@@ -206,6 +214,7 @@ function startAudioMonitor() {
     const lines = pending.split(/\r?\n/)
     pending = lines.pop() || ''
     for (const line of lines) {
+      if (Date.now() < selfAudioUntil) continue // 自发音效期间冻结检测状态
       try {
         const data = JSON.parse(line)
         const peak = Number(data.peak) || 0
@@ -253,6 +262,12 @@ function handleRequest(req, res) {
   }
   if (pathname === '/dsh-whale/image-headphones.png') {
     return serveAsset(path.join(PLUGIN_DIR, 'assets', 'DSniang1-headphones.png'), 'image/png', res)
+  }
+  if (pathname === '/dsh-whale/image-tsun.png') {
+    return serveAsset(path.join(PLUGIN_DIR, 'assets', 'DSniang1-tsun.png'), 'image/png', res)
+  }
+  if (pathname === '/dsh-whale/tsun.mp3') {
+    return serveAsset(path.join(PLUGIN_DIR, 'assets', 'tsun.mp3'), 'audio/mpeg', res)
   }
   const route = routes.find((r) => r.kind === 'exact' && r.path === pathname)
   if (route) {
@@ -385,6 +400,10 @@ function openSetupWindow() {
 }
 
 // —— 配置窗交互：保存写入 config.json，鲸鱼窗口刷新立即生效 ——
+ipcMain.on('self-audio', (event, ms) => {
+  // 鲸鱼自发音效开播：冻结检测指定时长（鸭子点击声 ~3s，彩蛋语音 ~4s）
+  selfAudioUntil = Math.max(selfAudioUntil, Date.now() + (Number(ms) || 4000))
+})
 ipcMain.on('save-key', (event, { key, token }) => {
   try {
     const cfg = loadConfig()

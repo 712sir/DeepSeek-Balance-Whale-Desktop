@@ -12,6 +12,8 @@ const { ipcRenderer } = require('electron')
 ipcRenderer.on('audio-state', (event, state) => {
   window.dispatchEvent(new CustomEvent('whale-audio-state', { detail: state || {} }))
 })
+// 鲸鱼自发音效（点击鸭子声/彩蛋语音）开播：通知主进程冻结音乐检测指定时长
+window.__whaleSelfAudioStarted = (ms) => { try { ipcRenderer.send('self-audio', ms) } catch (err) {} }
 
 let ignoring = true
 let hitCanvas = null
@@ -45,9 +47,11 @@ function ensureHitCanvas() {
   }
   probe.onerror = () => {}
   const root = document.querySelector('.dshwv-root')
-  const imageUrl = root && root.classList.contains('dshwv-music')
-    ? '/dsh-whale/image-headphones.png?v=hit'
-    : '/dsh-whale/image.png?v=hit'
+  const imageUrl = root && root.classList.contains('dshwv-tsun')
+    ? '/dsh-whale/image-tsun.png?v=hit'
+    : root && root.classList.contains('dshwv-music')
+      ? '/dsh-whale/image-headphones.png?v=hit'
+      : '/dsh-whale/image.png?v=hit'
   probe.src = imageUrl
   hitCanvas = c // 占位防重入，onload 前 hitReady=false 走矩形兜底
 }

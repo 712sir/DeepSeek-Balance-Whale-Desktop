@@ -130,8 +130,18 @@ var BALANCE_URL = '/dsh-whale/balance.json'
 var SIZE_URL = '/dsh-whale/size.json'
 var IMG_URL = '/dsh-whale/image.png?v=2'
 var HEADPHONES_IMG_URL = '/dsh-whale/image-headphones.png?v=1'
+var TSUN_IMG_URL = '/dsh-whale/image-tsun.png?v=1'
+var TSUN_AUDIO_URL = '/dsh-whale/tsun.mp3'
 var GIF_URL = '/dsh-whale/rua.gif'
 var audioPlaying = false
+// 傲娇彩蛋：TSUN_CLICKS 次点击（TSUN_WINDOW_MS 内）触发，持续 TSUN_MS
+var tsunActive = false
+var tsunRevertTimer = null
+var tsunClicks = []
+var TSUN_CLICKS = 5
+var TSUN_WINDOW_MS = 2500
+var TSUN_MS = 10000
+var TSUN_LINE = '杂鱼~杂鱼~'
 
 var css = [
   '.dshwv-root{position:fixed;right:0;bottom:0;--dshw-scale:1;--dshw-base:clamp(122px,calc(min(250px,min(100vw,100vh) * 0.28) * var(--dshw-scale)),625px);width:var(--dshw-base);height:var(--dshw-base);pointer-events:none;user-select:none;-webkit-user-select:none;z-index:9999;font-family:inherit;transition:left .16s ease,top .16s ease,transform .3s ease}',
@@ -390,6 +400,7 @@ bubbleBox.appendChild(textBox)
 bubbleBox.addEventListener('click', function (e) {
   e.stopPropagation()
   if (!bubbleShown) return
+  if (registerTsunClick()) return
   if (costBubbleActive) {
     // 消耗金额泡泡：点击关闭（确认）
     hideCostBubble()
@@ -423,17 +434,17 @@ root.appendChild(menuBtn)
 document.body.appendChild(root)
 document.body.appendChild(menuBox)
 
-function showMusicBubble() {
-  // 音乐哼唱泡泡：复用余额泡泡，播放期间一直显示（不设自动关闭计时器）
-  if (!bubbleOn || !audioPlaying) return
-  // 消耗金额泡泡优先：成本泡泡关闭后由 hideBubble 的恢复逻辑再显示哼唱
+function showOneLineBubble(text, autoHideMs) {
+  // 单行台词泡泡：复用余额泡泡展示一行文字（哼唱/傲娇台词）
+  if (!bubbleOn) return
+  // 消耗金额泡泡优先：成本泡泡关闭后由 hideBubble 的恢复逻辑再显示
   if (costBubbleActive) return
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (bubbleSwapTimer) { clearTimeout(bubbleSwapTimer); bubbleSwapTimer = null }
   if (hintFadeTimer) { clearTimeout(hintFadeTimer); hintFadeTimer = null }
   if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
   if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
-  musicBubbleActive = true
+  musicBubbleActive = false
   bubbleRandomActive = false
   bubbleRandomLines = null
   bubbleShown = true
@@ -442,7 +453,7 @@ function showMusicBubble() {
   gifEl.style.opacity = ''
   labelEl.style.display = ''
   labelEl.className = 'dshwv-label'
-  labelEl.textContent = '♪ 哼哼~'
+  labelEl.textContent = text
   labelEl.style.color = ''
   amountEl.style.display = 'none'
   amountEl.textContent = ''
@@ -453,6 +464,68 @@ function showMusicBubble() {
   textBox.style.transition = ''
   textBox.style.opacity = ''
   bubbleBox.classList.add('dshwv-bubble-open')
+  if (autoHideMs > 0) bubbleTimer = setTimeout(hideBubble, autoHideMs)
+}
+
+function showMusicBubble() {
+  // 音乐哼唱泡泡：播放期间一直显示（不设自动关闭计时器）
+  if (!audioPlaying) return
+  showOneLineBubble('♪ 哼哼~', 0)
+  musicBubbleActive = true
+}
+
+function updateWhaleImage() {
+  // 形象优先级：傲娇彩蛋 > 耳机（播放中）> 普通
+  if (tsunActive) { img.src = TSUN_IMG_URL; return }
+  img.src = audioPlaying ? HEADPHONES_IMG_URL : IMG_URL
+}
+
+function registerTsunClick() {
+  // 返回 true 表示调用方应跳过常规动作：
+  // ① 本次点击触发彩蛋（跳过 showBubble，避免余额泡泡盖掉傲娇台词）
+  // ② 彩蛋进行中：点击全部屏蔽（最高优先级——不弹余额、不弹随机台词、不切形象）
+  if (tsunActive) return true
+  var now = Date.now()
+  tsunClicks.push(now)
+  while (tsunClicks.length && now - tsunClicks[0] > TSUN_WINDOW_MS) tsunClicks.shift()
+  if (tsunClicks.length >= TSUN_CLICKS) {
+    tsunClicks = []
+    triggerTsun()
+    return true
+  }
+  return false
+}
+
+function triggerTsun() {
+  tsunActive = true
+  root.classList.add('dshwv-tsun')
+  updateWhaleImage()
+  // 彩蛋优先级最高：正在显示的消耗泡泡直接收起让位
+  if (costBubbleActive) hideCostBubble()
+  // 杂鱼台词占据全程（与彩蛋时长一致）：期间一切泡泡让位，时间到随彩蛋一起收
+  showOneLineBubble(TSUN_LINE, TSUN_MS)
+  playTsunAudio()
+  if (tsunRevertTimer) { clearTimeout(tsunRevertTimer); tsunRevertTimer = null }
+  tsunRevertTimer = setTimeout(function () {
+    tsunRevertTimer = null
+    tsunActive = false
+    root.classList.remove('dshwv-tsun')
+    updateWhaleImage()
+    // 音乐仍在播放：哼唱泡泡接回（彩蛋期间哼唱被杂鱼台词占据）
+    if (audioPlaying && !musicBubbleActive) showMusicBubble()
+  }, TSUN_MS)
+}
+
+var tsunAudio = null
+function playTsunAudio() {
+  try {
+    // 先通知主进程冻结检测，再出声——防止鲸鱼把自己的彩蛋语音听成音乐
+    if (window.__whaleSelfAudioStarted) window.__whaleSelfAudioStarted(4000)
+    if (!tsunAudio) tsunAudio = new Audio(TSUN_AUDIO_URL)
+    tsunAudio.currentTime = 0
+    var p = tsunAudio.play()
+    if (p && p.catch) p.catch(function () {})
+  } catch (err) {}
 }
 
 function setAudioPlaying(playing) {
@@ -461,11 +534,12 @@ function setAudioPlaying(playing) {
   audioPlaying = playing
   if (playing) {
     root.classList.add('dshwv-music')
-    img.src = HEADPHONES_IMG_URL
-    showMusicBubble()
+    updateWhaleImage()
+    // 彩蛋进行中不接哼唱：杂鱼台词优先级最高，恢复时由 triggerTsun 的计时器接回
+    if (!tsunActive) showMusicBubble()
   } else {
     root.classList.remove('dshwv-music')
-    img.src = IMG_URL
+    updateWhaleImage()
     if (musicBubbleTimer) { clearTimeout(musicBubbleTimer); musicBubbleTimer = null }
     if (musicBubbleActive) {
       // 停止播放：哼唱泡泡关闭，恢复「点击/余额变动才弹」的普通行为
@@ -683,8 +757,9 @@ function hideBubble() {
     gifFadeTimer = null
     gifEl.style.display = 'none'
   }, 240)
-  // 音乐播放中：余额/随机台词/成本泡泡关闭后回到哼唱泡泡（一直显示）
-  if (audioPlaying && !musicBubbleActive) {
+  // 音乐播放中：余额/随机台词/成本泡泡关闭后回到哼唱泡泡（一直显示）；
+  // 彩蛋进行中不接（杂鱼台词优先级最高，恢复时由 triggerTsun 的计时器接回）
+  if (audioPlaying && !musicBubbleActive && !tsunActive) {
     musicBubbleTimer = setTimeout(function () {
       musicBubbleTimer = null
       showMusicBubble()
@@ -695,7 +770,8 @@ function hideBubble() {
 // —— 每轮对话消耗金额泡泡 ——
 var costBubbleTimer = null
 function showCostBubble(amount) {
-  if (!bubbleOn || !turnCostOn) return
+  // 彩蛋进行中：消耗泡泡也让位（傲娇彩蛋优先级最高）
+  if (!bubbleOn || !turnCostOn || tsunActive) return
   if (costBubbleTimer) { clearTimeout(costBubbleTimer); costBubbleTimer = null }
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
   if (gifFadeTimer) { clearTimeout(gifFadeTimer); gifFadeTimer = null }
@@ -865,7 +941,7 @@ function refresh(manual) {
         state.todayUsage = data.todayUsage !== undefined ? data.todayUsage : null
         state.isPeak = !!data.isPeak
         if (changed && !currencyChanged) {
-          if (!manual) {
+          if (!manual && !tsunActive) {
             showBubble()
             state.status = 'changing'
             // balance-change bubble: wait 0.3s after it floats out, then roll the number
@@ -1083,6 +1159,8 @@ function playPress() {
       // hold: still pressed → wait for pressUp()
     }
     pressAudio.currentTime = 0
+    // 先冻结音乐检测再出声（鸭子音效不能把鲸鱼自己听成音乐）
+    if (window.__whaleSelfAudioStarted) window.__whaleSelfAudioStarted(3000)
     var p = pressAudio.play()
     if (p && typeof p.catch === 'function') p.catch(function () {})
   } catch (err) {}
@@ -1092,6 +1170,7 @@ function playRelease() {
   releasePlayed = true
   try {
     releaseAudio.currentTime = 0
+    if (window.__whaleSelfAudioStarted) window.__whaleSelfAudioStarted(1500)
     var p = releaseAudio.play()
     if (p && typeof p.catch === 'function') p.catch(function () {})
   } catch (err) {}
@@ -1315,7 +1394,7 @@ function endDrag(e, clickAllowed) {
   pressUp()
   root.classList.remove('dshwv-dragging')
   setWidgetCursor(isWhaleHit(e) ? 'grab' : '')
-  if (clickAllowed && !drag.moved) { showBubble(); refresh(true); return }
+  if (clickAllowed && !drag.moved) { if (registerTsunClick()) return; showBubble(); refresh(true); return }
   var dx = e.clientX - drag.startX
   var dy = e.clientY - drag.startY
   var left = clamp(drag.origLeft + dx, 0, Math.max(0, drag.vp.w - drag.w))

@@ -31,6 +31,11 @@ function getAutostart() {
   }
 }
 
+// userData 必须先于单实例锁定位：锁按 userData 目录归属，晚设置会让
+// 开发版/安装版共用同一把锁（同名 package → 同一个默认 userData 目录），
+// 与 README「两端可同时各出一头鲸」的设计相悖
+app.setPath('userData', USERDATA_DIR)
+
 // 单实例：避免双击启动出两头鲸
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -41,7 +46,6 @@ if (!app.requestSingleInstanceLock()) {
 function main() {
   app.on('second-instance', () => {})
   app.on('before-quit', stopAudioMonitor)
-  app.setPath('userData', USERDATA_DIR) // 必须在 ready 前设置
 
   app.setAppUserModelId('com.whale.desktop') // setLoginItemSettings 前置要求
   app.whenReady().then(() => boot())

@@ -13,7 +13,7 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > 📥 下载最新安装包：[GitHub Releases](https://github.com/712sir/DeepSeek-Balance-Whale-Desktop/releases/latest)
 
-把 `dist\DeepSeekWhale Setup 1.3.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
+把 `dist\DeepSeekWhale Setup 1.3.1.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
 
 1. **双击安装包**：标准安装向导——可选安装路径（默认 `%LOCALAPPDATA%\Programs\DeepSeekWhale\`）、
    勾选桌面快捷方式、勾选**开机自启**（默认开，装完可随时在托盘菜单改），装完自动启动
@@ -24,7 +24,7 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > ⚠️ 安装包未签名（个人项目），首次运行若 Windows SmartScreen 弹「未知发布者」，
 > 点「更多信息 → 仍要运行」即可。正式分发可配代码签名证书消除该提示。
-> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.3.0.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
+> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.3.1.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
 
 ## 原理（前端零改写）
 
@@ -120,7 +120,7 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 ## 打包发布（开发者）
 
 ```powershell
-npm run build        # → dist\DeepSeekWhale Setup 1.3.0.exe（NSIS 一键安装包）
+npm run build        # → dist\DeepSeekWhale Setup 1.3.1.exe（NSIS 一键安装包）
 npm run start        # 开发模式运行（不打包）
 ```
 
@@ -142,6 +142,13 @@ npm run start        # 开发模式运行（不打包）
 - **傲娇彩蛋（v1.2.1）**：桌面版特有——2.5 秒内连点 5 次触发，见「傲娇彩蛋」一节
 - **吃 token 彩蛋（v1.3.0）**：桌面版特有——60s 窗口内余额单次下降 ≥ ¥0.5 触发「狂吃 token」形象 +
   台词气泡 + 投币音效，10s 后恢复，见「吃 token 彩蛋」一节
+- **哼唱 Q 弹修复（v1.3.1）**：哼唱（耳机）形态下点按鲸鱼没有任何 Q 弹反馈——`dshwv-hum` 摆动动画的
+  优先级高于 inline transform，把按压压扁完全盖掉了。改为按压期间挂起摆动动画（压扁生效），
+  松开后等回弹过渡播完再恢复摆动；hum 的 0% 关键帧即中性姿态，两端切换零跳变
+- **单实例锁修复（v1.3.1）**：`requestSingleInstanceLock()` 曾早于 `setPath('userData')` 执行，
+  锁落在默认 userData 目录 → 开发版与安装版共用一把锁、无法同时运行（与本页「两端可同时各出一头鲸」
+  的说明相悖）。改为先定位 userData 再取锁，开发版跑 `D:\study\whale-desktop`、安装版跑
+  `%APPDATA%\whale-desktop`，各持一把锁
 - **升级**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` git pull 后重启挂件即生效，
   桌面端零改动
 - **点击/移动修复（v1.1.2）**：preload 监听器改为顶层立即挂载，不再依赖 window load；主进程增加光标轮询兜底，修复偶发全穿透导致的点击和拖动失效。

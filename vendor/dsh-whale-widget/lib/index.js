@@ -156,6 +156,8 @@ var css = [
   '.dshwv-root.dshwv-left{transform:scaleX(-1)}',
   '@keyframes dshwv-hum{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-3px) rotate(-1deg)}}',
   '.dshwv-root.dshwv-music .dshwv-body{animation:dshwv-hum .78s ease-in-out infinite}',
+  // 按压期间挂起摆动动画：CSS 动画优先级高于 inline transform，不禁用则压扁效果被盖掉（哼唱形态 q 弹）
+  '.dshwv-root.dshwv-music.dshwv-press .dshwv-body{animation:none}',
   '.dshwv-root.dshwv-dragging{cursor:grabbing;transition:none}',
   '.dshwv-body{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:50% 100%;transition:transform .22s cubic-bezier(.34,1.56,.64,1)}',
   '.dshwv-img{position:absolute;right:0;bottom:0;width:59.45%;height:59.45%;display:block;pointer-events:none;-webkit-user-drag:none;user-select:none}',
@@ -1224,14 +1226,27 @@ function playRelease() {
     if (p && typeof p.catch === 'function') p.catch(function () {})
   } catch (err) {}
 }
+var pressResumeTimer = null
 function pressDown() {
   body.style.transform = SQUISH
+  if (pressResumeTimer) { clearTimeout(pressResumeTimer); pressResumeTimer = null }
+  root.classList.add('dshwv-press')
   pressing = true
   playPress()
 }
 function pressUp() {
   body.style.transform = 'scaleY(1) scaleX(1)'
   pressing = false
+  // 哼唱形态：回弹过渡（.22s）播完再恢复摆动，否则 hum 动画立刻接管、q 弹回弹被吃掉
+  if (root.classList.contains('dshwv-music')) {
+    if (pressResumeTimer) clearTimeout(pressResumeTimer)
+    pressResumeTimer = setTimeout(function () {
+      pressResumeTimer = null
+      root.classList.remove('dshwv-press')
+    }, 240)
+  } else {
+    root.classList.remove('dshwv-press')
+  }
   if (pressEnded) {
     // hold (or released after Ya1 finished) → Ya2 now
     playRelease()

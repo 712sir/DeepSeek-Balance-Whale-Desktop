@@ -124,11 +124,13 @@ npm run build        # → dist\DeepSeekWhale Setup 1.3.1.exe（NSIS 一键安�
 npm run start        # 开发模式运行（不打包）
 ```
 
-- 安装包 = 发行版 Electron 运行时 + `vendor\dsh-whale-widget\`（原插件拷贝），前端后端零改写
+- 安装包 = 发行版 Electron 运行时 + `vendor\dsh-whale-widget\`（原插件拷贝）；**桌面外壳侧零改写**，
+  但 vendor 自 v1.1.2 起含 1 处本地补丁 + 桌面版特有素材（见「与原插件的差异」）
 - 构建依赖 `.npmrc` 里的 npmmirror 镜像（electron 二进制 + electron-builder 工具链，国内必配）
 - 打包后运行数据与开发模式分离（`%APPDATA%\whale-desktop\` vs 项目目录），
   **单实例锁也互不相同 → 开发版和安装版可以同时各出一头鲸**，测试时二选一
-- 原插件更新：`git pull` 上游仓库 → 重新拷贝到 `vendor\dsh-whale-widget\` → 重新 `npm run build`
+- 原插件更新：`git pull` 上游仓库 → 重新拷贝到 `vendor\dsh-whale-widget\` → 重新 `npm run build`。
+  ⚠️ **别直接覆盖 vendor**：里面还有本地补丁与桌面素材，见下节与「许可与素材」
 
 ## 与原插件的差异
 
@@ -149,15 +151,33 @@ npm run start        # 开发模式运行（不打包）
   锁落在默认 userData 目录 → 开发版与安装版共用一把锁、无法同时运行（与本页「两端可同时各出一头鲸」
   的说明相悖）。改为先定位 userData 再取锁，开发版跑 `D:\study\whale-desktop`、安装版跑
   `%APPDATA%\whale-desktop`，各持一把锁
-- **升级**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` git pull 后重启挂件即生效，
-  桌面端零改动
+- **升级（规划）**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` `git pull` 后，**重新拷贝
+  vendor 才能生效**（桌面版不做运行时软链）；拷贝前先按「本地补丁」条做兼容性核查，别直接覆盖
 - **点击/移动修复（v1.1.2）**：preload 监听器改为顶层立即挂载，不再依赖 window load；主进程增加光标轮询兜底，修复偶发全穿透导致的点击和拖动失效。
 - **点击修复（v1.2.2）**：150% 缩放下光标轮询坐标换算错误（屏幕 DIP 再除以 dpr 导致错位），
   窗口永远保持全穿透 → 鲸鱼点不动。改为主进程直接换算窗口内 CSS 坐标，preload 原样使用；
   轮询 400ms → 200ms，Windows forward 鼠标转发钩子失活时兜底依然可靠。
 - **本地补丁（v1.1.2）**：修复上游 issue #55 位置持久化 bug（重启后离边距离丢失、
   自由位被钉回贴角+镜像）——存储升 v:3 记自由轴、恢复时离边距离带进 hOff/vOff。
-  当前尚未向上游提交 PR，待整理后再提交；合并后 vendor 重新对齐
+  **上游已在 0.3.0 自行修复该 bug**（恢复时把净离边距离还给 `hOff`/`vOff`，不再被
+  `settle()` 覆盖成贴边），0.3.1 另加锚点夹紧与脏 `localStorage` 自愈 —— 因此提 PR 已无必要；
+  本地 v:3 补丁保留在 vendor 中，等与上游 0.3.x 对齐时移除。**对齐前先做兼容性核查**：
+  0.3.x 的 `/dsh-whale/*` 路由接入了 DSH 浏览器信任栅栏（裸请求 401/403），桌面版
+  自建 HTTP + shim ctx 的挂载方式可能受影响，别直接覆盖 `vendor\`
+
+## 许可与素材
+
+- **代码**：上游插件为 **MIT**（见 `vendor\dsh-whale-widget\LICENSE`）；本桌面外壳（`main.js` /
+  `preload.cjs` / 打包配置等）沿用同一许可使用与分发。
+- **美术素材不在 MIT 范围内**：`vendor\dsh-whale-widget\assets\` 下的图片 / 动图 / 音效由上游维护者
+  提供或用 AI 工具生成，按 **as-is** 随插件分发，**仅供运行本插件使用、不授予再许可**；
+  逐项来源、元数据清理说明与 takedown 方式见上游
+  [PROVENANCE.md](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/blob/main/PROVENANCE.md)。
+- 本安装包把 `vendor\`（**含 assets**）一并打包分发，用途限于运行该插件；上游若调整素材授权，
+  本项目同步移除或替换对应素材。
+- **桌面版特有素材**（`DSniang1-tsun.png` / `DSniang1-eat.png` / `tsun.mp3` / `eat.mp3`）同样不声明原创、
+  不授予再许可，仅供本桌面版运行。
+- 本移植是独立衍生作品，未向上游提交代码（上游 issue #82 中维护者已回复知悉）。
 
 ## 排障
 

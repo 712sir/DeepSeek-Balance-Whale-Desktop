@@ -2,7 +2,7 @@
 // 思路：不重写插件前后端。
 //   - 后端：shim 一个 DSH 插件 ctx（webServer/credentials），直接 import 原插件 lib/index.js，
 //     它注册的全部 /dsh-whale/* 路由（余额/尺寸/音效/图片/记账/widget.js）原样生效。
-//   - 前端：插件自己的 widget.js 路由把 WIDGET_JS 原样吐出，页面只是透明 HTML + 一行 script。
+//   - 前端：插件路由提供上游 whale-widget.js；页面只负责透明背景与桌面模式标记。
 //   - 桌面化：全屏(工作区)透明置顶窗口 + 点击穿透（preload.cjs 按命中区域动态开关）。
 import { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell } from 'electron'
 import http from 'node:http'
@@ -18,7 +18,9 @@ const IS_PACKAGED = app.isPackaged
 const PLUGIN_DIR = path.join(APP_DIR, 'vendor', 'dsh-whale-widget')
 // 运行时根目录：打包后安装目录只读 → 数据/配置/记忆全落 %APPDATA%\whale-desktop；
 // 开发模式沿用项目内目录（config.json / data / userdata）
-const RUNTIME_DIR = IS_PACKAGED ? path.join(app.getPath('appData'), 'whale-desktop') : APP_DIR
+const RUNTIME_DIR = process.env.WHALE_RUNTIME_DIR
+  ? path.resolve(process.env.WHALE_RUNTIME_DIR)
+  : (IS_PACKAGED ? path.join(app.getPath('appData'), 'whale-desktop') : APP_DIR)
 const DATA_DIR = path.join(RUNTIME_DIR, 'data')          // DSH_HOME：size/账本文件落这里
 const CONFIG_FILE = path.join(RUNTIME_DIR, 'config.json') // DEEPSEEK_API_KEY 等
 const USERDATA_DIR = RUNTIME_DIR // 安装版 localStorage 同落 %APPDATA%；开发版同项目目录
@@ -57,7 +59,7 @@ function loadConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
   } catch (err) {
-    const tpl = { DEEPSEEK_API_KEY: '', DEEPSEEK_PLATFORM_TOKEN: '', autostart: false }
+    const tpl = { DEEPSEEK_API_KEY: '', autostart: false }
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(tpl, null, 2), 'utf8')
     return tpl
   }
@@ -77,6 +79,21 @@ function setAutostart(v) {
 // —— shim DSH ctx，让原插件 apply() 直接跑起来 ——
 const routes = []
 const cleanupFns = []
+function requestRejection(req) {
+  try {
+    const host = String((req.headers && req.headers.host) || '').toLowerCase()
+    if (!/^(?:127\.0\.0\.1|localhost):\d+$/.test(host)) return 403
+    const origin = String((req.headers && req.headers.origin) || '')
+    if (origin) {
+      const parsed = new URL(origin)
+      const originHost = String(parsed.host || '').toLowerCase()
+      if (parsed.protocol !== 'http:' || originHost !== host) return 403
+    }
+    return false
+  } catch (err) {
+    return 403
+  }
+}
 const ctx = {
   webServer: {
     register(route) {
@@ -94,6 +111,10 @@ const ctx = {
       const v = (cfg && cfg[name]) || process.env[name]
       return v ? { value: String(v) } : null
     },
+  },
+  connection: { requestRejection },
+  get(name) {
+    return name === 'connection' ? this.connection : null
   },
   on() {
     return () => {} // 会话事件（DSH 专属），桌面版无会话 → 空监听
@@ -120,7 +141,9 @@ let selfAudioUntil = 0 // 鲸鱼自发音效（点击鸭子声/彩蛋语音）�
 async function boot() {
   // import 原插件（ESM），跑 apply(ctx) 完成全部路由注册
   const pluginUrl = pathToFileURL(path.join(PLUGIN_DIR, 'lib', 'index.js')).href
-  const plugin = await import(pluginUrl)
+  const pluginModule = await import(pluginUrl)
+  const plugin = pluginModule.default || pluginModule
+  if (!plugin || typeof plugin.apply !== 'function') throw new Error('dsh-whale-widget 插件入口缺少 apply(ctx)')
   plugin.apply(ctx)
 
   server = http.createServer(handleRequest)
@@ -186,7 +209,7 @@ async function boot() {
   win.showInactive() // 不抢当前窗口焦点
 
   makeTray()
-  startAudioMonitor()
+  if (process.env.WHALE_DISABLE_AUDIO !== '1') startAudioMonitor()
   // 首启引导：没配 key 时弹配置窗（填完自动刷新余额）
   if (!loadConfig().DEEPSEEK_API_KEY) openSetupWindow()
   console.log(`[whale] running at http://127.0.0.1:${serverPort} (routes: ${routes.length})`)
@@ -261,6 +284,12 @@ function stopAudioMonitor() {
 
 // —— 请求分发：把请求按 pathname 精确匹配给插件注册的路由 ——
 function handleRequest(req, res) {
+  const rejected = requestRejection(req)
+  if (rejected) {
+    res.writeHead(rejected)
+    res.end()
+    return
+  }
   const pathname = new URL(req.url, 'http://127.0.0.1').pathname
   if (pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
@@ -290,7 +319,14 @@ function handleRequest(req, res) {
   const route = routes.find((r) => r.kind === 'exact' && r.path === pathname)
   if (route) {
     try {
-      route.handler(req, res)
+      Promise.resolve(route.handler(req, res)).catch((err) => {
+        if (res.headersSent) {
+          try { res.end() } catch (endErr) {}
+          return
+        }
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('route error: ' + String((err && err.message) || err))
+      })
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
       res.end('route error: ' + String((err && err.message) || err))
@@ -312,7 +348,7 @@ function serveAsset(filePath, contentType, res) {
   }
 }
 
-// —— 桌面页面：透明背景，只引插件自己的 widget.js（前端零改写） ——
+// —— 桌面页面：透明背景，显式启用已适配的上游 widget.js ——
 const INDEX_HTML = `<!doctype html>
 <html>
 <head>
@@ -327,6 +363,7 @@ const INDEX_HTML = `<!doctype html>
 </style>
 </head>
 <body>
+<script>window.__dshWhaleDesktop = true</script>
 <script defer src="/dsh-whale/widget.js"></script>
 </body>
 </html>
@@ -361,11 +398,6 @@ const SETUP_HTML = `<!doctype html>
 <input id="key" type="text" placeholder="sk-..." spellcheck="false">
 <div class="hint">没有 Key？去 <a id="getkey" href="#">platform.deepseek.com → API Keys</a> 免费创建</div>
 <div class="err" id="err"></div>
-<div class="row">
-  <label for="token">DeepSeek Platform Token（可选）</label>
-  <input id="token" type="text" placeholder="留空即可（默认「记账」用量模式）">
-  <div class="hint">填了之后余额下方的「今日已用」改按「实时·令牌」模式统计</div>
-</div>
 <button class="btn" id="save">保存并开始使用</button>
 <div class="later"><a href="#" id="later">稍后再说（之后右键托盘鲸鱼 → 配置 API Key）</a></div>
 <script>
@@ -374,7 +406,7 @@ const SETUP_HTML = `<!doctype html>
   document.getElementById('save').onclick = () => {
     const key = document.getElementById('key').value.trim()
     if (!key) { document.getElementById('err').textContent = '请先粘贴你的 API Key（sk- 开头）'; return }
-    ipcRenderer.send('save-key', { key, token: document.getElementById('token').value.trim() })
+    ipcRenderer.send('save-key', { key })
   }
   document.getElementById('later').onclick = (e) => { e.preventDefault(); ipcRenderer.send('setup-cancel') }
   document.getElementById('key').focus()
@@ -387,7 +419,7 @@ function openSetupWindow() {
   if (setupWin && !setupWin.isDestroyed()) { setupWin.show(); setupWin.focus(); return }
   setupWin = new BrowserWindow({
     width: 460,
-    height: 470,
+    height: 390,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -422,11 +454,10 @@ ipcMain.on('self-audio', (event, ms) => {
   // 鲸鱼自发音效开播：冻结检测指定时长（鸭子点击声 ~3s，彩蛋语音 ~4s）
   selfAudioUntil = Math.max(selfAudioUntil, Date.now() + (Number(ms) || 4000))
 })
-ipcMain.on('save-key', (event, { key, token }) => {
+ipcMain.on('save-key', (event, { key }) => {
   try {
     const cfg = loadConfig()
     cfg.DEEPSEEK_API_KEY = key
-    if (token) cfg.DEEPSEEK_PLATFORM_TOKEN = token
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8')
     if (setupWin && !setupWin.isDestroyed()) setupWin.close()
     if (win && !win.isDestroyed()) win.webContents.reload() // 余额立即刷新

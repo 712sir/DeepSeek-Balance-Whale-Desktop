@@ -32,28 +32,29 @@ function pointInRect(px, py, r) {
 }
 
 function ensureHitCanvas() {
-  if (hitCanvas) return
+  const whaleImg = document.querySelector('.dshwv-img')
+  const imageUrl = whaleImg && (whaleImg.currentSrc || whaleImg.src)
+  if (!imageUrl) return
+  if (hitCanvas && hitCanvas.dataset && hitCanvas.dataset.src === imageUrl) return
   const c = document.createElement('canvas')
   c.width = 610
   c.height = 610
+  c.dataset.src = imageUrl
   const probe = new Image()
   probe.onload = () => {
     try {
-      // 与插件 setupHitTest 一致：拉伸到 610×610，镜像时 x 反向
-      c.getContext('2d').drawImage(probe, 0, 0, 610, 610)
+      // 与上游 setupHitTest 一致：按 object-fit:contain + right bottom 绘制到 610×610。
+      const iw = probe.width || 610
+      const ih = probe.height || 610
+      const scale = Math.min(610 / iw, 610 / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      c.getContext('2d').drawImage(probe, 610 - dw, 610 - dh, dw, dh)
       hitReady = true
       hitCanvas = c
     } catch (err) {}
   }
   probe.onerror = () => {}
-  const root = document.querySelector('.dshwv-root')
-  const imageUrl = root && root.classList.contains('dshwv-tsun')
-    ? '/dsh-whale/image-tsun.png?v=hit'
-    : root && root.classList.contains('dshwv-eat')
-      ? '/dsh-whale/image-eat.png?v=hit'
-      : root && root.classList.contains('dshwv-music')
-        ? '/dsh-whale/image-headphones.png?v=hit'
-        : '/dsh-whale/image.png?v=hit'
   probe.src = imageUrl
   hitCanvas = c // 占位防重入，onload 前 hitReady=false 走矩形兜底
 }
@@ -69,12 +70,26 @@ function isInteractive(px, py) {
   // 2) 菜单按钮（鲸鱼右上角 26×26，平时透明悬停才显示，但必须可悬停）
   const btn = document.querySelector('.dshwv-menu-btn')
   if (btn && pointInRect(px, py, btn.getBoundingClientRect())) return true
-  // 3) 打开的气泡（余额/台词/消耗金额泡泡）
-  const bub = document.querySelector('.dshwv-bubble')
-  if (bub && bub.classList.contains('dshwv-bubble-open')) {
+  // 3) 打开的气泡（v0.3.x=.dshwv-pop，旧版=.dshwv-bubble）
+  const bub = document.querySelector('.dshwv-pop, .dshwv-bubble')
+  if (bub && (bub.classList.contains('dshwv-pop-open') || bub.classList.contains('dshwv-bubble-open'))) {
     if (pointInRect(px, py, bub.getBoundingClientRect())) return true
   }
-  // 4) 鲸鱼本体：alpha 像素级（透明像素不拦截，直接点穿桌面）
+  // 4) 上游 v0.3.x 的弹层/下拉/编辑器。遮罩空白也必须拦截，才能点击关闭弹层。
+  const underPointer = document.elementFromPoint(px, py)
+  if (underPointer && underPointer.closest) {
+    const interactiveSurface = underPointer.closest([
+      '.dshwv-rolelist', '.dshwv-cropmask', '.dshwv-confirmmask',
+      '.dshwv-audiolist', '.dshwv-audiomask', '.dshwv-snapmask',
+      '.dshwv-bubmask', '.dshwv-qedit', '.dshwv-usagepanel',
+      '.dshwv-usage-mask', '.dshwv-resmask', '.dshwv-custmenu',
+      '.dshwv-custbtn', '.dshwv-gifmask', '.dshwv-fontmenu',
+      '.dshwv-linepanel', '.dshwv-qcolmenu', '.dshwv-rgbmenu',
+      '.dshwv-slotlist', '.dshwv-list'
+    ].join(','))
+    if (interactiveSurface) return true
+  }
+  // 5) 鲸鱼本体：alpha 像素级（透明像素不拦截，直接点穿桌面）
   const img = document.querySelector('.dshwv-img')
   if (img) {
     const r = img.getBoundingClientRect()
@@ -139,11 +154,11 @@ function armObservers() {
     ensureHitCanvas()
     if (lastX >= 0) recheck(lastX, lastY)
   })
-  const targets = ['.dshwv-root', '.dshwv-menu', '.dshwv-bubble', '.dshwv-menu-btn']
+  const targets = ['.dshwv-root', '.dshwv-menu', '.dshwv-pop', '.dshwv-bubble', '.dshwv-menu-btn', '.dshwv-img']
   const watch = () => {
     for (const sel of targets) {
       const el = document.querySelector(sel)
-      if (el) mo.observe(el, { attributes: true, attributeFilter: ['class'] })
+      if (el) mo.observe(el, { attributes: true, attributeFilter: ['class', 'src'] })
     }
   }
   // 挂件 DOM 是页面脚本创建，稍后再挂观察器

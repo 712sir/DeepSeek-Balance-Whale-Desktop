@@ -9,11 +9,20 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 ![小鲸鱼效果图](screenshots/效果图.png)
 
+## v1.4.0 更新
+
+- 完整同步上游 `dsh-whale-widget v0.3.1`：充值/余额校正、8 位小数账本、模块化泡泡、
+  自定义角色与音效、多厂商 API 和多窗口额度。
+- 保留桌面版音乐形态、傲娇彩蛋、狂吃 token 彩蛋、DPI 点击修复与透明区域点击穿透。
+- 新版 22 个路由接入桌面同源信任校验；旧账本首次成功写入时自动生成
+  `.dshw-usage.json.before-recharge-fix.bak`。
+- 移除已下线的 `DEEPSEEK_PLATFORM_TOKEN` 配置入口；已有配置文件中的旧字段不会被主动删除。
+
 ## 一键安装（给别人用）
 
 > 📥 下载最新安装包：[GitHub Releases](https://github.com/712sir/DeepSeek-Balance-Whale-Desktop/releases/latest)
 
-把 `dist\DeepSeekWhale Setup 1.3.1.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
+把 `dist\DeepSeekWhale Setup 1.4.0.exe` 发给对方，双击 → 安装完成自动弹出鲸鱼，无需 Node/Electron 环境。
 
 1. **双击安装包**：标准安装向导——可选安装路径（默认 `%LOCALAPPDATA%\Programs\DeepSeekWhale\`）、
    勾选桌面快捷方式、勾选**开机自启**（默认开，装完可随时在托盘菜单改），装完自动启动
@@ -24,17 +33,17 @@ DeepSeek 余额小鲸鱼（[DeepSeek-Balance-Whale-Widget](https://github.com/Me
 
 > ⚠️ 安装包未签名（个人项目），首次运行若 Windows SmartScreen 弹「未知发布者」，
 > 点「更多信息 → 仍要运行」即可。正式分发可配代码签名证书消除该提示。
-> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.3.1.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
+> 静默安装（运维批量部署）：`DeepSeekWhale Setup 1.4.0.exe /S`（自定义目录加 `/D=路径`；静默模式不动开机自启）
 
-## 原理（前端零改写）
+## 原理（上游 v0.3.1 + 桌面兼容层）
 
 ```
 Electron 透明窗口（铺满主屏工作区、置顶、不进任务栏）
   └─ 页面：透明 HTML + 一行 <script src="/dsh-whale/widget.js">
-        └─ widget.js = 原插件 lib/index.js 里的 WIDGET_JS，原样吐出，未改一行
+        └─ widget.js = 上游 assets/whale-widget.js + 桌面模式/彩蛋适配
   └─ 后端：shim 一个 DSH 插件 ctx（webServer/credentials）
-        └─ 直接 import 原插件 lib/index.js 跑 apply(ctx)
-            原插件的 8 个路由（余额/尺寸/音效/图片/记账/last-turn）全部原样生效
+        └─ 直接 import 上游 lib/index.js 跑 default.apply(ctx)
+            22 个路由（余额/记账校正/API 模型/角色/音效/泡泡等）全部挂载
 ```
 
 - **抠背景**：鲸鱼 PNG 本身是 cut-out；页面 html/body 全透明 + 窗口 transparent → 桌面只露出鲸鱼
@@ -57,11 +66,12 @@ npm start
 ```json
 {
   "DEEPSEEK_API_KEY": "sk-你的key",
-  "DEEPSEEK_PLATFORM_TOKEN": ""
+  "autostart": false
 }
 ```
 
-改完**点一下鲸鱼**立即生效（无需重启）。`DEEPSEEK_PLATFORM_TOKEN` 可选（「实时·令牌」用量模式用）。
+改完**点一下鲸鱼**立即生效（无需重启）。上游 v0.3.x 已统一使用小鲸鱼记账，不再需要
+`DEEPSEEK_PLATFORM_TOKEN`。
 没有 key 时鲸鱼照常出现，点它会提示「未配置 DEEPSEEK_API_KEY」。
 
 > 安装版用户的配置文件在 `%APPDATA%\whale-desktop\config.json`（托盘「打开配置文件」直达）。
@@ -102,7 +112,7 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 - 10 秒后自动恢复原型；若音乐还在播放，会接回耳机形象和哼唱气泡。
 - 与傲娇彩蛋互斥：任一彩蛋演出期间，另一个不会触发。
 
-> 触发阈值与时长是 `vendor\dsh-whale-widget\lib\index.js` 顶部的 `EAT_THRESHOLD`（默认 0.5）/ `EAT_MS`（默认 10000），
+> 触发阈值与时长是 `vendor\dsh-whale-widget\assets\whale-widget.js` 顶部的 `EAT_THRESHOLD`（默认 0.5）/ `EAT_MS`（默认 10000），
 > 想更灵敏就调低阈值。素材位于 `vendor\dsh-whale-widget\assets\`（`DSniang1-eat.png` / `eat.mp3`），
 > 换素材直接替换同名文件即可。
 
@@ -111,7 +121,11 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 | 路径 | 内容 |
 |------|------|
 | `data\.dshw-size.json` | 大小/音效/菜单设置 |
-| `data\.dshw-usage.json` | 小鲸鱼记账账本（余额差值累计，跨天归档） |
+| `data\.dshw-usage.json` | 新版小鲸鱼账本（余额下降/充值分开观测，8 位小数） |
+| `data\.dshw-usage.json.before-recharge-fix.bak` | 首次迁移旧账本时自动生成的只写一次备份 |
+| `data\.dshw-api.json` | 自定义 API 模型与额度配置（不保存密钥原文） |
+| `data\.dshw-bubble.json` | 模块化泡泡配置 |
+| `data\whale-roles\` / `data\whale-audio\` | 自定义角色与音效资源 |
 | `userdata\` | localStorage（鲸鱼位置记忆 `dshw-pos`） |
 | `config.json` | API Key + 开机自启开关 |
 
@@ -120,23 +134,29 @@ Windows 版会监听默认播放设备的音量峰值；检测到音乐播放时
 ## 打包发布（开发者）
 
 ```powershell
-npm run build        # → dist\DeepSeekWhale Setup 1.3.1.exe（NSIS 一键安装包）
+npm run build        # → dist\DeepSeekWhale Setup 1.4.0.exe（NSIS 一键安装包）
+npm test             # 静态兼容、账本迁移与路由集成测试
 npm run start        # 开发模式运行（不打包）
 ```
 
-- 安装包 = 发行版 Electron 运行时 + `vendor\dsh-whale-widget\`（原插件拷贝）；**桌面外壳侧零改写**，
-  但 vendor 自 v1.1.2 起含 1 处本地补丁 + 桌面版特有素材（见「与原插件的差异」）
+- 安装包 = 发行版 Electron 运行时 + `vendor\dsh-whale-widget\`（上游 v0.3.1 完整发布包）；
+  `main.js` / `preload.cjs` / `assets/whale-widget.js` 含桌面兼容层与桌面版特有素材
 - 构建依赖 `.npmrc` 里的 npmmirror 镜像（electron 二进制 + electron-builder 工具链，国内必配）
 - 打包后运行数据与开发模式分离（`%APPDATA%\whale-desktop\` vs 项目目录），
   **单实例锁也互不相同 → 开发版和安装版可以同时各出一头鲸**，测试时二选一
-- 原插件更新：`git pull` 上游仓库 → 重新拷贝到 `vendor\dsh-whale-widget\` → 重新 `npm run build`。
-  ⚠️ **别直接覆盖 vendor**：里面还有本地补丁与桌面素材，见下节与「许可与素材」
+- 原插件更新：获取明确 tag 的完整包 → 合入 `vendor\dsh-whale-widget\` → 重放桌面兼容层 →
+  跑测试与打包验证。⚠️ **别直接覆盖 vendor**：里面还有桌面补丁与特有素材，见下节。
 
 ## 与原插件的差异
 
+- **上游基线（v1.4.0）**：vendor 已完整同步 `dsh-whale-widget v0.3.1`（tag `d2b0a1c`），包含
+  充值/余额校正、原子账本写入、模块化泡泡、自定义角色/音效、34 个厂商模板与多窗口额度。
+- **桌面初始化**：上游前端默认只在 DSH 聊天页挂载；桌面壳通过 `window.__dshWhaleDesktop` 显式启用，
+  不伪造聊天输入框。
+- **路由信任栅栏**：桌面 shim 实现 `connection.requestRejection()`，只接受同源
+  `127.0.0.1/localhost` 请求；HTTP 服务仍仅绑定环回地址和随机端口。
 - **每轮对话消耗**：依赖 DSH 会话事件流，桌面版无会话 → `last-turn.json` 恒返回空，
-  此功能自然静默（其余全部功能：余额滚动、今日已用（记账/令牌两模式）、台词、音效、
-  拖拽吸附、镜像翻转、Q弹、菜单、峰谷定价全部可用）
+  此功能自然静默；余额校正、自定义 API、模块化泡泡、角色/音效、拖拽吸附等其余功能可用
 - **窗口=桌面**：原插件吸附在「浏览器窗口」边缘，这里吸附在「屏幕工作区」边缘
 - **音乐状态（v1.2.0）**：桌面版特有——监听系统默认输出设备的音量峰值，
   放歌时换耳机形象 + 哼唱气泡（原插件听不到系统音乐）；自己的点击音效/彩蛋语音会先通知
@@ -151,19 +171,14 @@ npm run start        # 开发模式运行（不打包）
   锁落在默认 userData 目录 → 开发版与安装版共用一把锁、无法同时运行（与本页「两端可同时各出一头鲸」
   的说明相悖）。改为先定位 userData 再取锁，开发版跑 `D:\study\whale-desktop`、安装版跑
   `%APPDATA%\whale-desktop`，各持一把锁
-- **升级（规划）**：原插件仓库 `D:\study\DeepSeek-Balance-Whale-Widget` `git pull` 后，**重新拷贝
-  vendor 才能生效**（桌面版不做运行时软链）；拷贝前先按「本地补丁」条做兼容性核查，别直接覆盖
+- **升级流程**：从上游 tag 导出完整包，合入 vendor 后重新移植桌面模式、点击穿透与三个桌面状态，
+  再运行 `npm test`、`node audio-ui-check.mjs` 和 Windows 打包；不要只替换 `lib/index.js`
 - **点击/移动修复（v1.1.2）**：preload 监听器改为顶层立即挂载，不再依赖 window load；主进程增加光标轮询兜底，修复偶发全穿透导致的点击和拖动失效。
 - **点击修复（v1.2.2）**：150% 缩放下光标轮询坐标换算错误（屏幕 DIP 再除以 dpr 导致错位），
   窗口永远保持全穿透 → 鲸鱼点不动。改为主进程直接换算窗口内 CSS 坐标，preload 原样使用；
   轮询 400ms → 200ms，Windows forward 鼠标转发钩子失活时兜底依然可靠。
-- **本地补丁（v1.1.2）**：修复上游 issue #55 位置持久化 bug（重启后离边距离丢失、
-  自由位被钉回贴角+镜像）——存储升 v:3 记自由轴、恢复时离边距离带进 hOff/vOff。
-  **上游已在 0.3.0 自行修复该 bug**（恢复时把净离边距离还给 `hOff`/`vOff`，不再被
-  `settle()` 覆盖成贴边），0.3.1 另加锚点夹紧与脏 `localStorage` 自愈 —— 因此提 PR 已无必要；
-  本地 v:3 补丁保留在 vendor 中，等与上游 0.3.x 对齐时移除。**对齐前先做兼容性核查**：
-  0.3.x 的 `/dsh-whale/*` 路由接入了 DSH 浏览器信任栅栏（裸请求 401/403），桌面版
-  自建 HTTP + shim ctx 的挂载方式可能受影响，别直接覆盖 `vendor\`
+- **位置持久化**：旧版 v:3 本地补丁已移除，改用上游 0.3.1 的锚点夹紧、非法距离落盘自愈和
+  尺寸就绪后二次校正；桌面版只保留 200ms 光标轮询与 DPI 坐标修复
 
 ## 许可与素材
 
